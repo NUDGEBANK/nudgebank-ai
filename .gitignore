@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# Jupyter / caches
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local matplotlib cache
+.matplotlib/
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Analysis outputs and model artifacts
+analysis/outputs/
+model/artifacts/
+outputs/
+
+# Raw data and archives
+data_raw/
+raw_data/
+*.zip
+카드소비 데이터_202512/
+
+# Large or temporary csv/txt/png outside sample directory
+*.png
+*.log
+*.tmp
+
+# Keep empty raw data directory structure only
+!data_raw/
+!data_raw/.gitkeep
+
+# Keep README assets
+!docs/
+!docs/assets/
+!docs/assets/*.png
