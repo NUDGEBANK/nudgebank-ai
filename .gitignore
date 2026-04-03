@@ -14,7 +14,7 @@ env/
 .mypy_cache/
 .ruff_cache/
 
-# Local matplotlib cache
+# Local caches
 .matplotlib/
 
 # IDE / OS
@@ -29,19 +29,16 @@ model/artifacts/
 outputs/
 
 # Raw data and archives
-data_raw/
+data_raw/*
+!data_raw/.gitkeep
 raw_data/
 *.zip
 카드소비 데이터_202512/
 
-# Large or temporary csv/txt/png outside sample directory
+# Large or temporary generated files
 *.png
 *.log
 *.tmp
-
-# Keep empty raw data directory structure only
-!data_raw/
-!data_raw/.gitkeep
 
 # Keep README assets
 !docs/
