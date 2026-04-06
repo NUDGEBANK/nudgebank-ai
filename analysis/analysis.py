@@ -3,6 +3,7 @@ from __future__ import annotations
 import glob
 import os
 import re
+import shutil
 from pathlib import Path
 
 os.environ["MPLCONFIGDIR"] = str(Path(__file__).resolve().parents[1] / ".matplotlib")
@@ -20,6 +21,7 @@ from scipy import stats
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_GLOB = str(REPO_ROOT / "data_raw" / "*.csv")
 OUTPUT_DIR = REPO_ROOT / "analysis" / "outputs"
+DOCS_ASSETS_DIR = REPO_ROOT / "docs" / "assets"
 MIN_COUNT_PER_GROUP = 30
 LOGIT_SAMPLE_PER_CLASS = 2_000
 RANDOM_STATE = 42
@@ -198,7 +200,16 @@ def sample_for_logit(model_df: pd.DataFrame) -> pd.DataFrame:
 def run_logistic_regression(model_df: pd.DataFrame):
     formula = "is_risk_spending ~ C(sex) + age_z_score + hour_z_score + amt_log_z_score + cnt_z_score + is_weekend"
     result = smf.logit(formula=formula, data=model_df).fit(disp=False, maxiter=200)
-    odds_ratio = np.exp(result.params).rename("odds_ratio").reset_index().rename(columns={"index": "variable"})
+    conf_int = np.exp(result.conf_int())
+    odds_ratio = pd.DataFrame(
+        {
+            "variable": result.params.index,
+            "odds_ratio": np.exp(result.params).values,
+            "ci_lower": conf_int[0].values,
+            "ci_upper": conf_int[1].values,
+            "p_value": result.pvalues.values,
+        }
+    )
     return result, odds_ratio
 
 
@@ -211,6 +222,121 @@ def save_chart(series: pd.Series, title: str, ylabel: str, path: Path, color: st
     fig.tight_layout()
     fig.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(fig)
+
+
+def save_table_image(df: pd.DataFrame, title: str, output_path: Path, font_size: int = 11, col_width: float = 1.3) -> None:
+    row_count, col_count = df.shape
+    fig_width = max(8, col_count * col_width + 2)
+    fig_height = max(2.5, row_count * 0.55 + 1.8)
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    ax.axis("off")
+    ax.set_title(title, fontsize=16, pad=16)
+
+    table = ax.table(
+        cellText=df.values,
+        colLabels=df.columns,
+        rowLabels=df.index if not isinstance(df.index, pd.RangeIndex) else None,
+        cellLoc="center",
+        loc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(font_size)
+    table.scale(1, 1.55)
+
+    for (row, col), cell in table.get_celld().items():
+        cell.set_edgecolor("#B0B8C2")
+        if row == 0:
+            cell.set_facecolor("#24415D")
+            cell.set_text_props(color="white", weight="bold")
+        elif col == -1:
+            cell.set_facecolor("#E8EEF5")
+            cell.set_text_props(weight="bold")
+        elif row % 2 == 1:
+            cell.set_facecolor("#F8FAFC")
+        else:
+            cell.set_facecolor("white")
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
+def save_text_image(text: str, title: str, output_path: Path, font_size: int = 9) -> None:
+    lines = text.splitlines()
+    fig_height = max(8, len(lines) * 0.28)
+    fig, ax = plt.subplots(figsize=(14, fig_height))
+    ax.axis("off")
+    ax.set_title(title, fontsize=16, pad=14)
+    ax.text(
+        0.01,
+        0.99,
+        text,
+        va="top",
+        ha="left",
+        family="DejaVu Sans Mono",
+        fontsize=font_size,
+        transform=ax.transAxes,
+    )
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
+def build_insight_table(summary_df: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "핵심 결과": [
+                "재량 소비 비중 최고",
+                "위험 소비 비율 최고",
+                "필수 소비 비중 최고",
+                "소비 변동성 최고",
+            ],
+            "연령대": [
+                summary_df["discretionary"].idxmax(),
+                summary_df["risk_ratio"].idxmax(),
+                summary_df["essential"].idxmax(),
+                summary_df["volatility"].idxmax(),
+            ],
+            "값": [
+                f"{summary_df['discretionary'].max():.2%}",
+                f"{summary_df['risk_ratio'].max():.2%}",
+                f"{summary_df['essential'].max():.2%}",
+                f"{summary_df['volatility'].max():,.0f}",
+            ],
+            "해석": [
+                "젊은층에서 선택적 소비 성향이 강함",
+                "상대적으로 소비 위험이 가장 큼",
+                "생필성 지출 비중이 가장 높음",
+                "일별 소비 편차가 가장 큼",
+            ],
+        }
+    )
+
+
+def format_summary_table(summary_df: pd.DataFrame, count_series: pd.Series) -> pd.DataFrame:
+    table = summary_df.copy()
+    table.insert(0, "표본 수", count_series.reindex(table.index).astype(int))
+    table["avg_spending"] = table["avg_spending"].map(lambda x: f"{x:,.0f}")
+    table["essential"] = table["essential"].map(lambda x: f"{x:.2%}")
+    table["normal"] = table["normal"].map(lambda x: f"{x:.2%}")
+    table["discretionary"] = table["discretionary"].map(lambda x: f"{x:.2%}")
+    table["risk"] = table["risk"].map(lambda x: f"{x:.2%}")
+    table["risk_ratio"] = table["risk_ratio"].map(lambda x: f"{x:.2%}")
+    table["volatility"] = table["volatility"].map(lambda x: f"{x:,.0f}")
+    table["volatility_index"] = table["volatility_index"].map(lambda x: f"{x:.2f}")
+    return table.rename(
+        columns={
+            "avg_spending": "평균 소비",
+            "essential": "필수 비율",
+            "normal": "일반 비율",
+            "discretionary": "재량 비율",
+            "risk": "위험 비율",
+            "risk_ratio": "위험소비 비율",
+            "volatility": "변동성",
+            "volatility_index": "변동성 지수",
+            "repayment_action": "추천 상환전략",
+        }
+    )
 
 
 def print_section(title: str) -> None:
@@ -228,6 +354,7 @@ def format_p_value(p_value: float) -> str:
 def main() -> None:
     configure_plot_style()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    DOCS_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
     data_glob = os.getenv("NUDGEBANK_DATA_GLOB", DEFAULT_DATA_GLOB)
     raw_df, file_list = load_data(data_glob)
@@ -278,9 +405,16 @@ def main() -> None:
     print(f"- 소비 변동성 최고: {summary['volatility'].idxmax()} ({summary['volatility'].max():,.0f})")
 
     summary.round(4).to_csv(OUTPUT_DIR / "age_spending_summary.csv", encoding="utf-8-sig")
-    pd.DataFrame(
-        [{"test": "one-way ANOVA", "f_statistic": round(float(f_stat), 4), "p_value": format_p_value(p_value)}]
-    ).to_csv(OUTPUT_DIR / "anova_result.csv", index=False, encoding="utf-8-sig")
+    anova_df = pd.DataFrame(
+        [{"검정": "One-way ANOVA", "F-statistic": round(float(f_stat), 4), "p-value": format_p_value(p_value), "결론": "유의미함"}]
+    )
+    anova_df.to_csv(OUTPUT_DIR / "anova_result.csv", index=False, encoding="utf-8-sig")
+
+    summary_table = format_summary_table(summary, counts)
+    insight_table = build_insight_table(summary)
+    save_table_image(anova_df, "ANOVA 결과표", OUTPUT_DIR / "anova_result_table.png", font_size=12, col_width=1.6)
+    save_table_image(summary_table, "연령별 소비 요약표", OUTPUT_DIR / "age_spending_summary_table.png", font_size=10, col_width=1.25)
+    save_table_image(insight_table, "핵심 인사이트 표", OUTPUT_DIR / "key_insights_table.png", font_size=11, col_width=1.6)
 
     save_chart(
         summary["avg_spending"],
@@ -311,7 +445,24 @@ def main() -> None:
         logit_df = sample_for_logit(prepare_logit_data(df))
         logit_result, odds_ratio = run_logistic_regression(logit_df)
         odds_ratio.to_csv(OUTPUT_DIR / "logit_odds_ratio.csv", index=False, encoding="utf-8-sig")
-        (OUTPUT_DIR / "logit_summary.txt").write_text(logit_result.summary().as_text(), encoding="utf-8")
+        logit_summary_text = logit_result.summary().as_text()
+        (OUTPUT_DIR / "logit_summary.txt").write_text(logit_summary_text, encoding="utf-8")
+        odds_ratio_display = odds_ratio.copy()
+        odds_ratio_display["odds_ratio"] = odds_ratio_display["odds_ratio"].map(lambda x: f"{x:.4f}")
+        odds_ratio_display["ci_lower"] = odds_ratio_display["ci_lower"].map(lambda x: f"{x:.4f}")
+        odds_ratio_display["ci_upper"] = odds_ratio_display["ci_upper"].map(lambda x: f"{x:.4f}")
+        odds_ratio_display["p_value"] = odds_ratio_display["p_value"].map(lambda x: f"{x:.4g}")
+        odds_ratio_display = odds_ratio_display.rename(
+            columns={
+                "variable": "변수",
+                "odds_ratio": "OR",
+                "ci_lower": "CI 2.5%",
+                "ci_upper": "CI 97.5%",
+                "p_value": "p-value",
+            }
+        )
+        save_table_image(odds_ratio_display, "로지스틱 회귀 OR 표", OUTPUT_DIR / "logit_odds_ratio_table.png", font_size=10, col_width=1.5)
+        save_text_image(logit_summary_text, "Logit Regression Results", OUTPUT_DIR / "logit_summary.png", font_size=9)
         print(f"로지스틱 회귀 표본 수: {len(logit_df):,}")
         print(logit_result.summary())
         print("\nOdds Ratio:")
@@ -324,15 +475,35 @@ def main() -> None:
         )
         print(f"로지스틱 회귀 생략: {error}")
 
+    for file_name in [
+        "anova_result_table.png",
+        "age_spending_summary_table.png",
+        "key_insights_table.png",
+        "avg_spending_by_age.png",
+        "risk_ratio_by_age.png",
+        "spending_type_ratio_by_age.png",
+        "logit_odds_ratio_table.png",
+        "logit_summary.png",
+    ]:
+        source = OUTPUT_DIR / file_name
+        if source.exists():
+            shutil.copy2(source, DOCS_ASSETS_DIR / file_name)
+
     print_section("7. 저장 결과")
     print(f"출력 폴더: {OUTPUT_DIR}")
     print("- age_spending_summary.csv")
     print("- anova_result.csv")
+    print("- anova_result_table.png")
+    print("- age_spending_summary_table.png")
+    print("- key_insights_table.png")
     print("- avg_spending_by_age.png")
     print("- risk_ratio_by_age.png")
     print("- spending_type_ratio_by_age.png")
     print("- logit_summary.txt")
     print("- logit_odds_ratio.csv")
+    print("- logit_odds_ratio_table.png")
+    print("- logit_summary.png")
+    print(f"\nREADME 이미지 동기화 폴더: {DOCS_ASSETS_DIR}")
 
 
 if __name__ == "__main__":
