@@ -219,6 +219,12 @@ def print_section(title: str) -> None:
     print("=" * 70)
 
 
+def format_p_value(p_value: float) -> str:
+    if p_value == 0:
+        return "< 1e-308"
+    return f"{p_value:.3e}"
+
+
 def main() -> None:
     configure_plot_style()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -247,7 +253,7 @@ def main() -> None:
 
     print_section("3. ANOVA 결과")
     print(f"F-statistic: {f_stat:.4f}")
-    print(f"p-value: {p_value:.4g}")
+    print(f"p-value: {format_p_value(p_value)}")
     if p_value < 0.05:
         print("해석: 연령대별 소비 금액 차이는 통계적으로 유의미합니다.")
     else:
@@ -273,7 +279,7 @@ def main() -> None:
 
     summary.round(4).to_csv(OUTPUT_DIR / "age_spending_summary.csv", encoding="utf-8-sig")
     pd.DataFrame(
-        [{"test": "one-way ANOVA", "f_statistic": round(float(f_stat), 4), "p_value": p_value}]
+        [{"test": "one-way ANOVA", "f_statistic": round(float(f_stat), 4), "p_value": format_p_value(p_value)}]
     ).to_csv(OUTPUT_DIR / "anova_result.csv", index=False, encoding="utf-8-sig")
 
     save_chart(

@@ -78,7 +78,7 @@ python analysis/analysis.py
 결과:
 
 - `F-statistic = 4993.9786`
-- `p-value = 0.0`
+- `p-value < 1e-308`
 
 해석:
 
