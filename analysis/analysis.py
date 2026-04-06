@@ -200,7 +200,16 @@ def sample_for_logit(model_df: pd.DataFrame) -> pd.DataFrame:
 def run_logistic_regression(model_df: pd.DataFrame):
     formula = "is_risk_spending ~ C(sex) + age_z_score + hour_z_score + amt_log_z_score + cnt_z_score + is_weekend"
     result = smf.logit(formula=formula, data=model_df).fit(disp=False, maxiter=200)
-    odds_ratio = np.exp(result.params).rename("odds_ratio").reset_index().rename(columns={"index": "variable"})
+    conf_int = np.exp(result.conf_int())
+    odds_ratio = pd.DataFrame(
+        {
+            "variable": result.params.index,
+            "odds_ratio": np.exp(result.params).values,
+            "ci_lower": conf_int[0].values,
+            "ci_upper": conf_int[1].values,
+            "p_value": result.pvalues.values,
+        }
+    )
     return result, odds_ratio
 
 
@@ -440,7 +449,18 @@ def main() -> None:
         (OUTPUT_DIR / "logit_summary.txt").write_text(logit_summary_text, encoding="utf-8")
         odds_ratio_display = odds_ratio.copy()
         odds_ratio_display["odds_ratio"] = odds_ratio_display["odds_ratio"].map(lambda x: f"{x:.4f}")
-        odds_ratio_display = odds_ratio_display.rename(columns={"variable": "변수", "odds_ratio": "OR"})
+        odds_ratio_display["ci_lower"] = odds_ratio_display["ci_lower"].map(lambda x: f"{x:.4f}")
+        odds_ratio_display["ci_upper"] = odds_ratio_display["ci_upper"].map(lambda x: f"{x:.4f}")
+        odds_ratio_display["p_value"] = odds_ratio_display["p_value"].map(lambda x: f"{x:.4g}")
+        odds_ratio_display = odds_ratio_display.rename(
+            columns={
+                "variable": "변수",
+                "odds_ratio": "OR",
+                "ci_lower": "CI 2.5%",
+                "ci_upper": "CI 97.5%",
+                "p_value": "p-value",
+            }
+        )
         save_table_image(odds_ratio_display, "로지스틱 회귀 OR 표", OUTPUT_DIR / "logit_odds_ratio_table.png", font_size=10, col_width=1.5)
         save_text_image(logit_summary_text, "Logit Regression Results", OUTPUT_DIR / "logit_summary.png", font_size=9)
         print(f"로지스틱 회귀 표본 수: {len(logit_df):,}")
