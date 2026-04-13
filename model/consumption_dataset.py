@@ -231,7 +231,7 @@ def _add_time_series_features(monthly_df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_prediction_dataset(source_dir: Path = DEFAULT_SOURCE_DIR) -> pd.DataFrame:
+def _finalize_feature_frame(source_dir: Path = DEFAULT_SOURCE_DIR) -> pd.DataFrame:
     tables = load_source_tables(source_dir)
     card_df = _prepare_card_transactions(tables["card_transaction"])
     monthly_df = _build_monthly_transaction_features(card_df)
@@ -245,9 +245,25 @@ def build_prediction_dataset(source_dir: Path = DEFAULT_SOURCE_DIR) -> pd.DataFr
     if "age_group" in monthly_df.columns:
         monthly_df["age_group"] = monthly_df["age_group"].astype(str).fillna("UNKNOWN")
 
-    monthly_df = monthly_df.dropna(subset=["label_next_month_total_spending"]).copy()
     monthly_df = monthly_df.fillna(0)
     return monthly_df
+
+
+def build_prediction_dataset(source_dir: Path = DEFAULT_SOURCE_DIR) -> pd.DataFrame:
+    monthly_df = _finalize_feature_frame(source_dir)
+    monthly_df = monthly_df.dropna(subset=["label_next_month_total_spending"]).copy()
+    return monthly_df
+
+
+def build_latest_inference_dataset(source_dir: Path = DEFAULT_SOURCE_DIR) -> pd.DataFrame:
+    monthly_df = _finalize_feature_frame(source_dir)
+    latest_rows = (
+        monthly_df.sort_values(["consumer_id", "year_month"])
+        .groupby("consumer_id", as_index=False)
+        .tail(1)
+        .copy()
+    )
+    return latest_rows.drop(columns=["label_next_month_total_spending"], errors="ignore")
 
 
 def save_prediction_dataset(
@@ -276,11 +292,48 @@ def save_prediction_dataset(
     )
 
 
+def save_latest_inference_dataset(
+    dataset: pd.DataFrame,
+    output_dir: Path = DEFAULT_DATASET_DIR,
+) -> DatasetArtifacts:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dataset_path = output_dir / "latest_inference_dataset.csv"
+    metadata_path = output_dir / "latest_inference_dataset_meta.json"
+
+    dataset.to_csv(dataset_path, index=False, encoding="utf-8-sig")
+
+    metadata = {
+        "row_count": int(len(dataset)),
+        "feature_count": int(len(dataset.columns)),
+        "label_column": "",
+        "columns": dataset.columns.tolist(),
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+    return DatasetArtifacts(
+        dataset_path=str(dataset_path),
+        metadata_path=str(metadata_path),
+        row_count=int(len(dataset)),
+        feature_count=int(len(dataset.columns)),
+        label_column="",
+    )
+
+
 def main() -> None:
-    dataset = build_prediction_dataset()
-    artifacts = save_prediction_dataset(dataset)
-    print("Consumption prediction dataset created.")
-    print(json.dumps(asdict(artifacts), indent=2, ensure_ascii=False))
+    training_dataset = build_prediction_dataset()
+    latest_inference_dataset = build_latest_inference_dataset()
+    training_artifacts = save_prediction_dataset(training_dataset)
+    inference_artifacts = save_latest_inference_dataset(latest_inference_dataset)
+    print("Consumption prediction datasets created.")
+    print(
+        json.dumps(
+            {
+                "training_dataset": asdict(training_artifacts),
+                "latest_inference_dataset": asdict(inference_artifacts),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":
