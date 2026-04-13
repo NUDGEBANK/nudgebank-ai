@@ -181,3 +181,16 @@ python model/train.py
 ```bash
 python service/predict.py
 ```
+
+## Consumption Prediction Pipeline
+
+```bash
+python run_pipeline.py
+```
+
+## Docker
+
+```bash
+docker build -t nudgebank-ai .
+docker run --env-file .env nudgebank-ai
+```

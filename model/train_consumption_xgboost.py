@@ -6,6 +6,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error, mean_squared_error
@@ -38,10 +39,13 @@ def _prepare_features(dataset: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, l
     X = dataset.drop(columns=[LABEL_COLUMN]).copy()
     y = dataset[LABEL_COLUMN].copy()
 
-    categorical_columns = [column for column in X.columns if X[column].dtype == "object" and column not in EXCLUDE_COLUMNS]
+    categorical_columns = [
+        column for column in X.columns
+        if column not in EXCLUDE_COLUMNS and not is_numeric_dtype(X[column])
+    ]
     numeric_columns = [
         column for column in X.columns
-        if column not in EXCLUDE_COLUMNS and column not in categorical_columns
+        if column not in EXCLUDE_COLUMNS and is_numeric_dtype(X[column])
     ]
 
     X = X[numeric_columns + categorical_columns]
