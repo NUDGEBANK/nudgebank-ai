@@ -58,6 +58,23 @@ EXPORT_QUERIES = {
         FROM consumer_baseline
         ORDER BY analysis_year_month, member_id
     """,
+    "consumer_monthly_analysis": """
+        SELECT
+            member_id AS consumer_id,
+            TO_CHAR(analysis_year_month, 'YYYYMM') AS year_month,
+            current_month_spending,
+            same_day_avg_spending,
+            spending_diff_amount,
+            spending_status,
+            total_transactions_count,
+            essential_transactions_count,
+            discretionary_transactions_count,
+            largest_spending_category_id,
+            largest_spending_amount,
+            created_at
+        FROM consumer_monthly_analysis
+        ORDER BY analysis_year_month, member_id
+    """,
     "age_group_baseline": """
         SELECT
             age_group,
@@ -106,6 +123,9 @@ EXPORT_QUERIES = {
     """,
 }
 
+ID_CANDIDATES = ("consumer_id", "member_id", "user_id")
+YEAR_MONTH_CANDIDATES = ("year_month", "analysis_year_month", "analysis_month", "target_month")
+
 
 def load_environment() -> None:
     # In deployment, real environment variables should take precedence.
@@ -132,6 +152,32 @@ def build_database_url() -> str:
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
 
 
+def _normalize_consumer_monthly_analysis(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = df.copy()
+
+    id_column = next((column for column in ID_CANDIDATES if column in normalized.columns), None)
+    if id_column and id_column != "consumer_id":
+        normalized = normalized.rename(columns={id_column: "consumer_id"})
+
+    year_month_column = next((column for column in YEAR_MONTH_CANDIDATES if column in normalized.columns), None)
+    if year_month_column is None:
+        raise KeyError(
+            "consumer_monthly_analysis export requires one of columns "
+            f"{YEAR_MONTH_CANDIDATES}, found {tuple(normalized.columns)}"
+        )
+
+    if year_month_column != "year_month":
+        normalized = normalized.rename(columns={year_month_column: "year_month"})
+
+    normalized["year_month"] = (
+        normalized["year_month"]
+        .astype(str)
+        .str.replace(r"[^0-9]", "", regex=True)
+        .str.slice(0, 6)
+    )
+    return normalized
+
+
 def export_tables(table_names: list[str] | None = None, output_dir: Path = OUTPUT_DIR) -> dict[str, str]:
     table_names = table_names or list(EXPORT_QUERIES.keys())
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -148,6 +194,8 @@ def export_tables(table_names: list[str] | None = None, output_dir: Path = OUTPU
                 )
             query = text(EXPORT_QUERIES[table_name])
             df = pd.read_sql(query, connection)
+            if table_name == "consumer_monthly_analysis":
+                df = _normalize_consumer_monthly_analysis(df)
             output_path = output_dir / f"{table_name}.csv"
             df.to_csv(output_path, index=False, encoding="utf-8-sig")
             exported[table_name] = str(output_path)
