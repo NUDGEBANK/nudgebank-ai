@@ -6,27 +6,22 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from consumption_dataset import DEFAULT_DATASET_DIR, build_prediction_dataset, save_prediction_dataset
-from train_consumption_xgboost import ARTIFACT_DIR, EXCLUDE_COLUMNS, LABEL_COLUMN
+from consumption_dataset import (
+    DEFAULT_DATASET_DIR,
+    build_latest_inference_dataset,
+    save_latest_inference_dataset,
+)
+from train_consumption_xgboost import ARTIFACT_DIR
 
 
 def _load_latest_feature_rows(dataset_dir: Path = DEFAULT_DATASET_DIR) -> pd.DataFrame:
-    dataset_path = dataset_dir / "consumption_prediction_dataset.csv"
+    dataset_path = dataset_dir / "latest_inference_dataset.csv"
     if dataset_path.exists():
         dataset = pd.read_csv(dataset_path, encoding="utf-8-sig")
     else:
-        dataset = build_prediction_dataset()
-        save_prediction_dataset(dataset, dataset_dir)
-
-    latest_rows = (
-        dataset.sort_values(["consumer_id", "year_month"])
-        .groupby("consumer_id", as_index=False)
-        .tail(1)
-        .copy()
-    )
-    if LABEL_COLUMN in latest_rows.columns:
-        latest_rows = latest_rows.drop(columns=[LABEL_COLUMN])
-    return latest_rows
+        dataset = build_latest_inference_dataset()
+        save_latest_inference_dataset(dataset, dataset_dir)
+    return dataset
 
 
 def predict_next_month_total(
