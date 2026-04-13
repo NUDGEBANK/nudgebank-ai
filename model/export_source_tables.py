@@ -108,7 +108,6 @@ EXPORT_QUERIES = {
             account_name,
             account_number,
             balance,
-            protected_balance,
             opened_at
         FROM account
         ORDER BY account_id
