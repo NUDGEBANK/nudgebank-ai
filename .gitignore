@@ -30,6 +30,10 @@ analysis/outputs/
 model/artifacts/
 outputs/
 
+# Exported source tables
+data_source/*.csv
+!data_source/README.md
+
 # Raw data and archives
 data_raw/*
 !data_raw/.gitkeep
