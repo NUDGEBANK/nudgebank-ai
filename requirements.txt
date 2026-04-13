@@ -3,3 +3,9 @@ numpy
 scipy
 matplotlib
 statsmodels
+scikit-learn
+xgboost
+joblib
+SQLAlchemy
+psycopg2-binary
+python-dotenv
