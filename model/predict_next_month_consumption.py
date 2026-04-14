@@ -15,12 +15,8 @@ from train_consumption_xgboost import ARTIFACT_DIR
 
 
 def _load_latest_feature_rows(dataset_dir: Path = DEFAULT_DATASET_DIR) -> pd.DataFrame:
-    dataset_path = dataset_dir / "latest_inference_dataset.csv"
-    if dataset_path.exists():
-        dataset = pd.read_csv(dataset_path, encoding="utf-8-sig")
-    else:
-        dataset = build_latest_inference_dataset()
-        save_latest_inference_dataset(dataset, dataset_dir)
+    dataset = build_latest_inference_dataset()
+    save_latest_inference_dataset(dataset, dataset_dir)
     return dataset
 
 
