@@ -40,6 +40,10 @@ EXPORT_QUERIES = {
             ON ct.market_id = mk.market_id
         LEFT JOIN market_category mc
             ON ct.category_id = mc.category_id
+        WHERE ct.amount > 0
+          AND COALESCE(mc.category_name, '') NOT IN ('넛지뱅크', '대출', '대출 실행 입금')
+          AND COALESCE(mk.market_name, '') <> 'NudgeBank 대출 실행'
+          AND COALESCE(ct.menu_name, '') <> '대출금 자동상환'
         ORDER BY ct.transaction_datetime
     """,
     "consumer_baseline": """

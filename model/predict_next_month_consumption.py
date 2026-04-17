@@ -13,11 +13,46 @@ from consumption_dataset import (
 )
 from train_consumption_xgboost import ARTIFACT_DIR
 
+ROLLING_3M_LOWER_MULTIPLIER = 0.5
+ROLLING_3M_UPPER_MULTIPLIER = 1.8
+CURRENT_MONTH_UPPER_MULTIPLIER = 2.0
+
 
 def _load_latest_feature_rows(dataset_dir: Path = DEFAULT_DATASET_DIR) -> pd.DataFrame:
     dataset = build_latest_inference_dataset()
     save_latest_inference_dataset(dataset, dataset_dir)
     return dataset
+
+
+def _clip_with_guardrails(feature_rows: pd.DataFrame, predictions: pd.Series) -> pd.Series:
+    raw = pd.to_numeric(predictions, errors="coerce").fillna(0)
+    rolling_3m_avg = pd.to_numeric(
+        feature_rows.get("rolling_3m_avg_spending", pd.Series(0, index=feature_rows.index)),
+        errors="coerce",
+    ).fillna(0)
+    current_month_total = pd.to_numeric(
+        feature_rows.get(
+            "monthly_current_month_spending",
+            feature_rows.get("total_spending", pd.Series(0, index=feature_rows.index)),
+        ),
+        errors="coerce",
+    ).fillna(0)
+
+    lower_bound = rolling_3m_avg * ROLLING_3M_LOWER_MULTIPLIER
+    rolling_upper_bound = rolling_3m_avg * ROLLING_3M_UPPER_MULTIPLIER
+    current_month_cap = current_month_total * CURRENT_MONTH_UPPER_MULTIPLIER
+    has_rolling_upper_bound = rolling_upper_bound > 0
+    has_current_month_cap = current_month_cap > 0
+
+    # Prefer current-month cap when available so new in-month transactions can move predictions.
+    # Previous logic used min(rolling_upper, current_cap), which could freeze predictions within a month.
+    upper_bound = pd.Series(float("inf"), index=feature_rows.index, dtype="float64")
+    upper_bound = upper_bound.where(~has_rolling_upper_bound, rolling_upper_bound)
+    upper_bound = upper_bound.where(~has_current_month_cap, current_month_cap)
+
+    bounded = raw.clip(lower=lower_bound)
+    bounded = bounded.clip(upper=upper_bound)
+    return bounded.round(2)
 
 
 def predict_next_month_total(
@@ -32,9 +67,11 @@ def predict_next_month_total(
 
     model = joblib.load(model_path)
     feature_rows = _load_latest_feature_rows(dataset_dir)
-    predictions = model.predict(feature_rows)
+    raw_predictions = pd.Series(model.predict(feature_rows), index=feature_rows.index)
+    predictions = _clip_with_guardrails(feature_rows, raw_predictions)
 
     result = feature_rows[[column for column in ("consumer_id", "year_month", "age_group", "sex") if column in feature_rows.columns]].copy()
+    result["raw_predicted_next_month_total_spending"] = raw_predictions.round(2)
     result["predicted_next_month_total_spending"] = predictions
 
     output_path = artifact_dir / "next_month_consumption_predictions.csv"
