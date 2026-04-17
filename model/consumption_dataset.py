@@ -60,6 +60,13 @@ def _safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
     denominator = denominator.replace(0, np.nan)
     return numerator.div(denominator).fillna(0.0)
 
+def _parse_transaction_dates(series: pd.Series) -> pd.Series:
+    # Handle mixed datetime formats (with/without fractional seconds, timezone offsets).
+    try:
+        return pd.to_datetime(series, errors="coerce", utc=True, format="mixed")
+    except TypeError:
+        return pd.to_datetime(series, errors="coerce", utc=True)
+
 
 def load_source_tables(source_dir: Path = DEFAULT_SOURCE_DIR) -> dict[str, pd.DataFrame]:
     tables: dict[str, pd.DataFrame] = {}
@@ -99,7 +106,7 @@ def _prepare_card_transactions(card_transaction: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    df["transaction_date"] = pd.to_datetime(df["transaction_date"], errors="coerce")
+    df["transaction_date"] = _parse_transaction_dates(df["transaction_date"])
     df = df.dropna(subset=["consumer_id", "transaction_date", "amount"]).copy()
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
     df = df.dropna(subset=["amount"]).copy()
