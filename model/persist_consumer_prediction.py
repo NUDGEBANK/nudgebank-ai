@@ -10,10 +10,10 @@ from export_source_tables import build_database_url, load_environment
 from predict_next_month_consumption import predict_next_month_total
 from train_consumption_xgboost import ARTIFACT_DIR
 
-DEFAULT_NEW_WEIGHT = 0.6
-DEFAULT_OLD_WEIGHT = 0.4
-SURGE_NEW_WEIGHT = 0.5
-SURGE_OLD_WEIGHT = 0.5
+DEFAULT_NEW_WEIGHT = 0.8
+DEFAULT_OLD_WEIGHT = 0.2
+SURGE_NEW_WEIGHT = 0.7
+SURGE_OLD_WEIGHT = 0.3
 SURGE_GROWTH_THRESHOLD = 0.5
 
 
