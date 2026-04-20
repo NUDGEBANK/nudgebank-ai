@@ -31,6 +31,7 @@ L2_CATEGORY_CANDIDATES = ("card_tpbuz_nm_2", "category_l2", "merchant_category_l
 SPENDING_TYPE_CANDIDATES = ("spending_type",)
 
 SPENDING_TYPES = ("essential", "normal", "discretionary", "risk")
+MONTHLY_ANALYSIS_EXCLUDED_COLUMNS = {"created_at", "updated_at"}
 
 
 @dataclass
@@ -197,7 +198,11 @@ def _attach_consumer_monthly_analysis(
     analysis = analysis.rename(columns={consumer_id_col: "consumer_id", month_col: "year_month"})
     analysis["year_month"] = _coerce_year_month(analysis["year_month"])
 
-    join_columns = [column for column in analysis.columns if column not in {"consumer_id", "year_month"}]
+    join_columns = [
+        column
+        for column in analysis.columns
+        if column not in {"consumer_id", "year_month"} and column not in MONTHLY_ANALYSIS_EXCLUDED_COLUMNS
+    ]
     rename_map = {column: f"monthly_{column}" for column in join_columns}
     analysis = analysis.rename(columns=rename_map)
     return monthly_df.merge(analysis, on=["consumer_id", "year_month"], how="left")
