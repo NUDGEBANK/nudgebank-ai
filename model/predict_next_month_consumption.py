@@ -16,6 +16,9 @@ from train_consumption_xgboost import ARTIFACT_DIR
 ROLLING_3M_LOWER_MULTIPLIER = 0.5
 ROLLING_3M_UPPER_MULTIPLIER = 1.8
 CURRENT_MONTH_UPPER_MULTIPLIER = 2.0
+CURRENT_MONTH_LOWER_MULTIPLIER = 0.3
+HIGH_SPENDING_SURGE_THRESHOLD = 1.2
+SURGE_LOWER_MULTIPLIER = 0.8
 
 
 def _load_latest_feature_rows(dataset_dir: Path = DEFAULT_DATASET_DIR) -> pd.DataFrame:
@@ -39,6 +42,11 @@ def _clip_with_guardrails(feature_rows: pd.DataFrame, predictions: pd.Series) ->
     ).fillna(0)
 
     lower_bound = rolling_3m_avg * ROLLING_3M_LOWER_MULTIPLIER
+    current_month_floor = current_month_total * CURRENT_MONTH_LOWER_MULTIPLIER
+    surge_condition = current_month_total > (rolling_3m_avg * HIGH_SPENDING_SURGE_THRESHOLD)
+    surge_floor = rolling_3m_avg * SURGE_LOWER_MULTIPLIER
+    lower_bound = lower_bound.where(~surge_condition, surge_floor)
+    lower_bound = pd.concat([lower_bound, current_month_floor], axis=1).max(axis=1)
     rolling_upper_bound = rolling_3m_avg * ROLLING_3M_UPPER_MULTIPLIER
     current_month_cap = current_month_total * CURRENT_MONTH_UPPER_MULTIPLIER
     has_rolling_upper_bound = rolling_upper_bound > 0

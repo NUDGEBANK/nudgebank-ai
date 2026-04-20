@@ -24,6 +24,10 @@ EXCLUDE_COLUMNS = {
     "year_month",
     LABEL_COLUMN,
 }
+MONOTONIC_POSITIVE_FEATURES = {
+    "total_spending",
+    "monthly_current_month_spending",
+}
 
 
 def _load_or_create_dataset(dataset_dir: Path = DEFAULT_DATASET_DIR) -> pd.DataFrame:
@@ -67,6 +71,25 @@ def _time_based_split(dataset: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
     return train_df, valid_df
 
 
+def _build_sample_weights(train_df: pd.DataFrame) -> pd.Series:
+    month_series = train_df["year_month"].astype(str)
+    ordered_months = sorted(month_series.unique())
+    month_to_rank = {month: index for index, month in enumerate(ordered_months)}
+    month_rank = month_series.map(month_to_rank).astype(float)
+    if month_rank.max() <= 0:
+        return pd.Series(1.0, index=train_df.index, dtype="float64")
+    normalized_rank = month_rank / month_rank.max()
+    return 1.0 + normalized_rank
+
+
+def _build_monotone_constraints(numeric_columns: list[str], categorical_columns: list[str]) -> str:
+    constraints = []
+    for column in numeric_columns:
+        constraints.append(1 if column in MONOTONIC_POSITIVE_FEATURES else 0)
+    constraints.extend([0] * len(categorical_columns))
+    return f"({','.join(str(value) for value in constraints)})"
+
+
 def train_model(dataset_dir: Path = DEFAULT_DATASET_DIR) -> dict[str, object]:
     dataset = _load_or_create_dataset(dataset_dir)
     train_df, valid_df = _time_based_split(dataset)
@@ -98,6 +121,7 @@ def train_model(dataset_dir: Path = DEFAULT_DATASET_DIR) -> dict[str, object]:
         colsample_bytree=0.8,
         objective="reg:squarederror",
         random_state=42,
+        monotone_constraints=_build_monotone_constraints(numeric_columns, categorical_columns),
     )
 
     pipeline = Pipeline(
@@ -107,7 +131,8 @@ def train_model(dataset_dir: Path = DEFAULT_DATASET_DIR) -> dict[str, object]:
         ]
     )
 
-    pipeline.fit(X_train, y_train)
+    sample_weights = _build_sample_weights(train_df)
+    pipeline.fit(X_train, y_train, model__sample_weight=sample_weights)
     predictions = pipeline.predict(X_valid)
 
     metrics = {
