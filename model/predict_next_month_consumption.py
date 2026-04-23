@@ -14,8 +14,8 @@ from consumption_dataset import (
 from train_consumption_xgboost import ARTIFACT_DIR
 
 ROLLING_3M_LOWER_MULTIPLIER = 0.5
-ROLLING_3M_UPPER_MULTIPLIER = 1.8
-CURRENT_MONTH_UPPER_MULTIPLIER = 2.0
+ROLLING_3M_UPPER_MULTIPLIER = 2.5
+CURRENT_MONTH_UPPER_MULTIPLIER = 2.8
 CURRENT_MONTH_LOWER_MULTIPLIER = 0.3
 HIGH_SPENDING_SURGE_THRESHOLD = 1.2
 SURGE_LOWER_MULTIPLIER = 0.8
@@ -52,11 +52,16 @@ def _clip_with_guardrails(feature_rows: pd.DataFrame, predictions: pd.Series) ->
     has_rolling_upper_bound = rolling_upper_bound > 0
     has_current_month_cap = current_month_cap > 0
 
-    # Prefer current-month cap when available so new in-month transactions can move predictions.
-    # Previous logic used min(rolling_upper, current_cap), which could freeze predictions within a month.
     upper_bound = pd.Series(float("inf"), index=feature_rows.index, dtype="float64")
-    upper_bound = upper_bound.where(~has_rolling_upper_bound, rolling_upper_bound)
-    upper_bound = upper_bound.where(~has_current_month_cap, current_month_cap)
+    available_caps = pd.concat(
+        [
+            rolling_upper_bound.where(has_rolling_upper_bound),
+            current_month_cap.where(has_current_month_cap),
+        ],
+        axis=1,
+    )
+    chosen_upper = available_caps.max(axis=1, skipna=True)
+    upper_bound = upper_bound.where(chosen_upper.isna(), chosen_upper)
 
     bounded = raw.clip(lower=lower_bound)
     bounded = bounded.clip(upper=upper_bound)
