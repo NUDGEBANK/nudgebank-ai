@@ -52,8 +52,6 @@ def _clip_with_guardrails(feature_rows: pd.DataFrame, predictions: pd.Series) ->
     has_rolling_upper_bound = rolling_upper_bound > 0
     has_current_month_cap = current_month_cap > 0
 
-    # Use the larger available cap so predictions are not pinned to "current_month * fixed constant".
-    # This keeps guardrails for outliers while preserving model responsiveness.
     upper_bound = pd.Series(float("inf"), index=feature_rows.index, dtype="float64")
     available_caps = pd.concat(
         [
